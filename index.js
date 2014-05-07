@@ -6,8 +6,8 @@
 	var KEYTAP_START_SIZE = 15;
 	var SCREENTAP_LIFETIME = 1;
 	var SCREENTAP_START_SIZE = 30;
-	var LAYER_GESTURE_FRAMES = 60;
-	var LAYER_GESTURE_DELTA = 1;
+	var LAYER_GESTURE_FRAMES = 30;
+	var LAYER_GESTURE_DELTA = 3.0;
 
 	// Globals
 	var canvas = document.getElementById('canvas');
@@ -49,19 +49,20 @@
 				detectingLayerGesture = true;
 				if(layerGestureLastPos !== undefined) {
 					var prevDir = layerGestureDirection;
-					if(handPosX - LAYER_GESTURE_DELTA < layerGestureLastPos) {
+					if(handPosX - LAYER_GESTURE_DELTA < layerGestureLastPos && prevDir === layerGestureDirection) {
 						// console.log("gesture left");
 						c.fillText("gesture left" , 0, 115);
 
 						layerGestureDirection = "left";
-					} else if(handPosX + LAYER_GESTURE_DELTA > layerGestureLastPos) {
+					} else if(handPosX + LAYER_GESTURE_DELTA > layerGestureLastPos && prevDir === layerGestureDirection) {
 						// console.log("gesture right");
 						c.fillText("gesture right" , 0, 115);
 
 						layerGestureDirection = "right";
-					} else {
-						console.log("gesture nonmoving");
-						c.fillText("gesture nonmoving" , 0, 115);
+					} 
+					else {
+						console.log("gesture dir change");
+						c.fillText("gesture dir change" , 0, 115);
 
 						clearLayerGestureStatus();
 					}
@@ -71,23 +72,24 @@
 					// 	clearLayerGestureStatus();
 					// }
 				}
-				//  else {
-				// 	console.log("first frame");
-				// }
+				 else {
+					console.log("first frame");
+				}
 				if(detectingLayerGesture === true){
 					layerGestureFrameCount++;
 				}
 				if(layerGestureFrameCount === LAYER_GESTURE_FRAMES) { //gesture detected
 					console.log("gesture detected: " + layerGestureDirection);
+					// clearLayerGestureStatus();
 					return layerGestureDirection;
 				}
 
 				layerGestureLastPos = handPosX;
-			} else {
+			} else { // palm rotation out of range
 				clearLayerGestureStatus();	
 				return undefined;
 			}
-	  } else {
+	  } else { // no hands in frame
 	  	clearLayerGestureStatus();
 	  }
   }
