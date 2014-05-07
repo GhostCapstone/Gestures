@@ -6,77 +6,98 @@
 	var KEYTAP_START_SIZE = 15;
 	var SCREENTAP_LIFETIME = 1;
 	var SCREENTAP_START_SIZE = 30;
+	var LAYER_GESTURE_FRAMES = 60;
+	var LAYER_GESTURE_DELTA = 1;
 
 	// Globals
 	var canvas = document.getElementById('canvas');
 	var width = canvas.width;
 	var height = canvas.height;
 	var c = canvas.getContext('2d');
+			c.font = '15pt Arial';
 	var controller = new Leap.Controller({enableGestures: true});
 	var frame;
 	var keyTaps = [];
 	var screenTaps = [];
+	var detectingLayerGesture = false;
+	var layerGestureFrameCount = 0;
+	var layerGestureLastPos;
+	var layerGestureDirection;
 
 	// animation loop
 	controller.on('frame', function(data) {
 		frame = data;
 		c.clearRect(0, 0, width, height); // reset canvas between frames
-
-		for (var i = 0; i < frame.gestures.length; i++) {
-			var gesture = frame.gestures[i];
-			var type = gesture.type;
-			switch(type) {
-				case "circle":
-					onCircle(gesture);
-					break;
-
-				case "swipe":
-					onSwipe(gesture);
-					break;
-				case "screenTap":
-					onScreenTap(gesture);
-					break;
-				case "keyTap":
-					onKeyTap(gesture);
-					break;
-			}
-
-		}
-		updateKeyTaps();
-		drawKeyTaps();
-
-		updateScreenTaps();
-		drawScreenTaps();
+		drawHands(frame);
+		var direction = detectLayerGesture(frame);
 	});
 
-	function onCircle(gesture) {
-		// get pos
-		var pos = leapToScene(gesture.center);
-		var r = gesture.radius;
-		var clockwise = false;
+	// returns the direction of the layer direction if detected as a string, otherwise returns null
+  function detectLayerGesture(frame) {
+    // console.log("detecting layer gesture");
+    if(frame.hands.length > 0) {
+	    var handPosX = frame.hands[0].palmPosition[0];
+	    var palmNormalX = frame.hands[0].palmNormal[0];
+	    c.fillText("hand x coord: " + handPosX , 0, 15);
+	    c.fillText("num fingers : " + frame.hands[0].fingers.length, 0, 40);
+	    c.fillText("palm norm x : " + palmNormalX , 0, 65);
 
-		if (gesture.normal[2] <= 0) {
-			clockwise = true;
-		}
+	    //determine if palm is sideways
+	    // -1 = left, 1 = right
+			if(Math.abs(palmNormalX) > 0.65){ //start detecting gesture
+				c.fillText("gesture start" , 0, 90);
+				detectingLayerGesture = true;
+				if(layerGestureLastPos !== undefined) {
+					var prevDir = layerGestureDirection;
+					if(handPosX - LAYER_GESTURE_DELTA < layerGestureLastPos) {
+						// console.log("gesture left");
+						c.fillText("gesture left" , 0, 115);
 
-		// Set up style for the stroke, and fill
-		c.fillStyle = '#39AECF';
-		c.strokeStyle = '39AECF';
-		c.lineWidth = 5;
+						layerGestureDirection = "left";
+					} else if(handPosX + LAYER_GESTURE_DELTA > layerGestureLastPos) {
+						// console.log("gesture right");
+						c.fillText("gesture right" , 0, 115);
 
-		// draw the circle
-		c.beginPath();
-		c.arc(pos[0], pos[1], r, 0, Math.PI*2);
-		c.closePath();
+						layerGestureDirection = "right";
+					} else {
+						console.log("gesture nonmoving");
+						c.fillText("gesture nonmoving" , 0, 115);
 
-		if (clockwise) {
-			c.stroke();
-		} else {
-			c.fill();
-		}
+						clearLayerGestureStatus();
+					}
 
-	}
+					// if(prevDir !== layerGestureDirection){
+					// 	console.log("quit gesture detection because of change in dir");
+					// 	clearLayerGestureStatus();
+					// }
+				}
+				//  else {
+				// 	console.log("first frame");
+				// }
+				if(detectingLayerGesture === true){
+					layerGestureFrameCount++;
+				}
+				if(layerGestureFrameCount === LAYER_GESTURE_FRAMES) { //gesture detected
+					console.log("gesture detected: " + layerGestureDirection);
+					return layerGestureDirection;
+				}
 
+				layerGestureLastPos = handPosX;
+			} else {
+				clearLayerGestureStatus();	
+				return undefined;
+			}
+	  } else {
+	  	clearLayerGestureStatus();
+	  }
+  }
+
+  function clearLayerGestureStatus() {
+		detectingLayerGesture = false;
+		layerGestureFrameCount = 0;
+		layerGestureDirection = undefined;
+		layerGestureLastPos = undefined;
+  }
 
 	function onSwipe(gesture) {
 		var startPos = leapToScene(gesture.startPosition);
@@ -93,130 +114,48 @@
 		c.stroke();
 	}
 
-	function onScreenTap(gesture) {
-		var pos = leapToScene(gesture.position);
-		var time = frame.timestamp;
-		screenTaps.push([pos[0], pos[1], time]);
-	}
-
-	function onKeyTap(gesture) {
-		var pos = leapToScene(gesture.position);
-		var time = frame.timestamp;
-		// add tuples of x, y, timestamp
-		keyTaps.push([pos[0], pos[1], time]);
-	}
-
-	function drawScreenTaps() {
-		for (var i = 0; i < screenTaps.length; i++) {
-			var screenTap = screenTaps[i];
-
-			var x = screenTap[0];
-			var y = screenTap[1];
-
-			var age = frame.timestamp - screenTap[2];
-			age /= 1000000;
-			var completion = age / SCREENTAP_LIFETIME;
-			var timeLeft = 1 - completion;
-			// draw
-
-			c.strokeStyle = "#FFB300";
-			c.lineWidth = 3;
-
-			c.save(); // save context
-
-			c.translate(x, y);
-
-			// Starting x and y
-			var left = -SCREENTAP_START_SIZE / 2;
-			var top = -SCREENTAP_START_SIZE / 2;
-			var localWidth = SCREENTAP_START_SIZE;
-			var localHeight = SCREENTAP_START_SIZE;
-
-			// Draw the rectangle
-			c.strokeRect(left, top, localWidth, localHeight);
-
-			c.restore(); // Restore context
-			// Drawing the non-static part
-
-			var size = SCREENTAP_START_SIZE * timeLeft;
-			var opacity =  timeLeft;
-			var rotation = timeLeft * Math.PI;
-
-			c.fillStyle = "rgba( 255 , 179 , 0 , " + opacity + ")";
-
-			c.save();
-
-			c.translate(x, y);
-			c.rotate(rotation); // spin that square yo
-
-			left = -size / 2;
-			top = -size / 2;
-			localWidth = size;
-			localHeight = size;
-
-			c.fillRect(left, top, localWidth, localHeight);
-
-			c.restore();
+	controller.connect();
 
 
-		}
-	}
+	function drawHands(frame) {
+    // c.clearRect(0, 0, width, height);
+    for (var i = 0; i < frame.hands.length; i++) {
+      var hand = frame.hands[i];
+      var handPos = leapTo2D(frame, hand.palmPosition);
+      for (var j = 0; j < hand.fingers.length; j++) {
+        //var finger = hand.fingers[j];
+        var fingerPos = leapTo2D(frame, hand.fingers[j].tipPosition);
 
-	function drawKeyTaps() {
-		for (var i = 0; i < keyTaps.length; i++) {
-			var keyTap = keyTaps[i];
-			var age = frame.timestamp - keyTap[2];
-			age /= 1000000;
-			var x = keyTap[0];
-			var y = keyTap[1];
-			var completion = age / KEYTAP_LIFETIME;
-			var timeLeft = 1 - completion;
-			var opacity = timeLeft;
-			var radius = KEYTAP_START_SIZE * timeLeft;
+        // draw finger tips
+        c.lineWidth = 5;
+        c.fillStyle = '#00FF00';
+        c.strokeStyle = '#FFFF00';
+        c.beginPath();
+        c.arc(fingerPos[0], fingerPos[1], 6, 0, Math.PI * 2);
+        c.closePath();
+        c.stroke();
 
-			// drawing static circle
-			c.strokeStyle = '#FF2300';
-			c.lineWidth = 3;
-			c.beginPath();
-			c.arc(x, y, KEYTAP_START_SIZE, 0, Math.PI*2);
-			c.closePath();
-			c.stroke();
-
-			// finger circle
-			c.fillStyle = "rgba(256, 33, 0, " + opacity + ")";
-			c.arc(x, y, radius, 0, Math.PI*2);
-			c.closePath();
-			c.fill();
-		}
-	}
-
-	function updateScreenTaps() {
-		for (var i = 0; i < screenTaps.length; i++) {
-			var screenTap = screenTaps[i];
-			var age = frame.timestamp - screenTaps[i][2];
-			age /= 1000000;
-
-			if (age >= SCREENTAP_LIFETIME) {
-				screenTaps.splice(i, 1);
-			}
-		}
-	}
-
-	// removes/checks for expired keytaps
-	function updateKeyTaps () {
-		for (var i = 0; i < keyTaps.length; i++) {
-			var keyTap = keyTaps[i];
-
-			// get the difference in time
-			var age = frame.timestamp - keyTaps[i][2];
-			age /= 1000000;
-			if (age >= KEYTAP_LIFETIME) {
-				keyTaps.splice(i, 1);
-			}
-		}
-	}
+        // draw finger lines
+        c.strokeStyle = '#0000FF';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.moveTo(handPos[0], handPos[1]);
+        c.lineTo(fingerPos[0], fingerPos[1]);
+        c.closePath();
+        c.stroke();
+      }
 
 
+      // draw palm
+      c.fillStyle = '#00FF00';
+      c.strokeStyle = '#FFFF00';
+      c.beginPath();
+      c.arc(handPos[0], handPos[1], 10, 0, Math.PI * 2);
+      c.closePath();
+      c.fill();
+    }
+  }
+	
 	// Convert leap coordinates to 2d canvas coords
 	function leapToScene (leapPos) {
 		// Gets the interaction box of the current frame
@@ -242,13 +181,23 @@
 		// Uses the height and width of the canvas to scale
 		// the x and y coordinates in a way that they 
 		// take up the entire canvas
-		x *= width;
-		y *= height;
+		x *= width / 2;
+		y *= height / 2;
 
 		// Returns the values, making sure to negate the sign 
 		// of the y coordinate, because the y basis in canvas 
 		// points down instead of up
 		return [ x , -y ];
 	}
-	controller.connect();
+
+  function leapTo2D(frame, leapPos) {
+    var iBox = frame.interactionBox;
+    var left = iBox.center[0] - iBox.size[0] / 2;
+    var top = iBox.center[1] + iBox.size[1] / 2;
+    var x = (leapPos[0] - left) / iBox.size[0] * width / 2;
+    var y = (leapPos[1] - top) / iBox.size[1] * width / 2;
+
+    return [x, -y];
+  }
+
 })();
